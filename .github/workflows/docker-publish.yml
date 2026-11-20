@@ -22,12 +22,38 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build and push Docker image
+    - name: Build Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
-        push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/openjdk-17-slim-font:latest
+        pull: true
+        load: true
+        push: false
+        tags: |
+          lm2343635/openjdk-17-slim-font:latest
+          lm2343635/openjdk-17-slim-font:17.0.21.1-2
+
+    - name: Verify patched JVM and existing fonts
+      run: |
+        set -euo pipefail
+        IMAGE=lm2343635/openjdk-17-slim-font:17.0.21.1-2
+        docker run --rm --network none --entrypoint java "$IMAGE" -XshowSettings:properties -version 2>&1 | tee runtime.txt
+        grep -F 'java.runtime.version = 17.0.21.1+2' runtime.txt
+        docker run --rm --network none --entrypoint sh "$IMAGE" -ec '
+          for package in fonts-arphic-ukai fonts-arphic-uming fonts-noto-cjk fonts-wqy-zenhei fonts-wqy-microhei ghostscript; do
+            test "$(dpkg-query -W -f="\${Status}" "$package")" = "install ok installed"
+          done
+          fc-list :lang=zh family > /tmp/chinese-fonts.txt
+          test -s /tmp/chinese-fonts.txt
+          cat /tmp/chinese-fonts.txt
+          gs --version
+        '
+
+    - name: Push verified Docker image
+      run: |
+        set -euo pipefail
+        docker push lm2343635/openjdk-17-slim-font:17.0.21.1-2
+        docker push lm2343635/openjdk-17-slim-font:latest
 
     - name: Log out from Docker Hub
       run: docker logout
